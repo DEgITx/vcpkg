@@ -1,0 +1,135 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f0d0d9b..f2dfeb9 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -118,6 +118,14 @@ configure_file(
+     @ONLY
+ )
+ 
++# Record feature state in installed headers for consumers which do not use the
++# exported CMake target.
++set(RATS_CONFIG_SEARCH_FEATURES "${RATS_SEARCH_FEATURES}")
++configure_file(
++    ${PROJECT_SOURCE_DIR}/src/librats/util/features.h.in
++    ${PROJECT_BINARY_DIR}/src/librats/util/features.h
++)
++
+ # Configure version.rc from template
+ if(WIN32)
+     configure_file(
+@@ -746,6 +754,9 @@ if(RATS_INSTALL)
+     install(FILES ${PROJECT_BINARY_DIR}/src/librats/util/version.h
+         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/librats/util
+     )
++    install(FILES ${PROJECT_BINARY_DIR}/src/librats/util/features.h
++        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/librats/util
++    )
+ 
+     install(EXPORT ratsTargets
+         FILE ratsTargets.cmake
+diff --git a/src/librats/dht/dht.h b/src/librats/dht/dht.h
+index 1cbf508..968b00e 100644
+--- a/src/librats/dht/dht.h
++++ b/src/librats/dht/dht.h
+@@ -15,6 +15,7 @@
+  */
+ 
+ #include "librats/util/rats_export.h"
++#include "librats/util/features.h"
+ #include "librats/core/address.h"
+ #include "librats/core/host_endpoint.h"
+ #include "librats/core/socket.h"   // AddressFamily
+@@ -39,7 +40,7 @@ constexpr int DHT_PORT = 6881;
+ /// Discovered peers for an info-hash are delivered through this callback.
+ using PeerDiscoveryCallback = std::function<void(const std::vector<Address>& peers, const InfoHash& info_hash)>;
+ 
+-#ifdef RATS_SEARCH_FEATURES
++#if RATS_CONFIG_SEARCH_FEATURES
+ /// Spider mode: invoked when a peer announces it has a torrent.
+ using SpiderAnnounceCallback = std::function<void(const InfoHash& info_hash, const Address& peer)>;
+ #endif
+@@ -88,7 +89,7 @@ public:
+     bool load_routing_table();
+     void set_data_directory(const std::string& directory);
+ 
+-#ifdef RATS_SEARCH_FEATURES
++#if RATS_CONFIG_SEARCH_FEATURES
+     void set_spider_mode(bool enable);
+     bool is_spider_mode() const;
+     void set_spider_announce_callback(SpiderAnnounceCallback callback);
+diff --git a/src/librats/dht/node.h b/src/librats/dht/node.h
+index d82a51e..42e7601 100644
+--- a/src/librats/dht/node.h
++++ b/src/librats/dht/node.h
+@@ -14,6 +14,7 @@
+  * and runs its own lookups (bootstrap, find_peers, announce_peer).
+  */
+ 
++#include "librats/util/features.h"
+ #include "librats/core/address.h"
+ #include "librats/core/host_endpoint.h"
+ #include "librats/dht/dos_blocker.h"
+@@ -43,7 +44,7 @@ struct KrpcMessage;
+ 
+ namespace dht {
+ 
+-#ifdef RATS_SEARCH_FEATURES
++#if RATS_CONFIG_SEARCH_FEATURES
+ // Invoked when another peer announces it has a torrent (spider mode collects these).
+ using SpiderAnnounceCallback = std::function<void(const InfoHash&, const Address&)>;
+ #endif
+@@ -69,7 +70,7 @@ public:
+     bool lookup_active(const InfoHash& info_hash, bool announce) const;  // is one running?
+     std::size_t lookup_count(bool announce) const;                       // how many running
+ 
+-#ifdef RATS_SEARCH_FEATURES
++#if RATS_CONFIG_SEARCH_FEATURES
+     // Spider mode — aggressive crawl that collects announce_peer requests from the
+     // network. set/walk/clear must run on the loop thread (post them); the on/off and
+     // ignore flags are atomics readable from anywhere.
+@@ -139,7 +140,7 @@ private:
+     // without the engine threading `now` through every callback signature.
+     TimePoint now_{};
+ 
+-#ifdef RATS_SEARCH_FEATURES
++#if RATS_CONFIG_SEARCH_FEATURES
+     // An id that looks close to `target` (first 10 bytes from target, last 10 from us),
+     // so peers route more queries our way during a crawl.
+     NodeId neighbor_id(const NodeId& target) const;
+diff --git a/src/librats/subsystems/bittorrent.h b/src/librats/subsystems/bittorrent.h
+index e5e5689..3306e7a 100644
+--- a/src/librats/subsystems/bittorrent.h
++++ b/src/librats/subsystems/bittorrent.h
+@@ -25,6 +25,7 @@
+  */
+ 
+ #include "librats/util/rats_export.h"
++#include "librats/util/features.h"
+ #include "librats/node/peer_network.h"          // Subsystem, NodeContext (fwd)
+ #include "librats/bittorrent/client.h"          // bittorrent::Client, TorrentInfo, InfoHash
+ #include "librats/dht/dht.h"                     // DhtClient, SpiderAnnounceCallback
+@@ -41,6 +42,8 @@ namespace librats {
+ 
+ class ServiceRegistry;
+ 
++#if RATS_CONFIG_SEARCH_FEATURES
++
+ class RATS_API Bittorrent final : public Subsystem {
+ public:
+     struct Config {
+@@ -126,4 +129,6 @@ private:
+     int                     meta_inflight_ = 0;
+ };
+ 
++#endif
++
+ } // namespace librats
+diff --git a/src/librats/util/features.h.in b/src/librats/util/features.h.in
+new file mode 100644
+index 0000000..c1d6ef4
+--- /dev/null
++++ b/src/librats/util/features.h.in
+@@ -0,0 +1,3 @@
++#pragma once
++
++#cmakedefine01 RATS_CONFIG_SEARCH_FEATURES
