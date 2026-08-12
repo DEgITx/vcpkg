@@ -5,7 +5,7 @@ vcpkg_from_github(
     SHA512 403fe3a213b1620a8d5bf9b2c01a8e0a5144e1bf1aca4d0969b1c75446b545f025afc1d426eeae9a5a4b4228f457bc5e14e46f30f74da092c1e23a8db03bafb9
     HEAD_REF master
     PATCHES
-        search-features-config.patch
+        guard-bittorrent-header.patch
 )
 
 vcpkg_check_features(
@@ -35,6 +35,15 @@ vcpkg_cmake_configure(
 vcpkg_cmake_install()
 
 vcpkg_cmake_config_fixup(PACKAGE_NAME rats CONFIG_PATH lib/cmake/rats)
+
+if("search-features" IN_LIST FEATURES)
+    file(APPEND "${CURRENT_PACKAGES_DIR}/include/librats/util/rats_export.h" [[
+
+#ifndef RATS_SEARCH_FEATURES
+#define RATS_SEARCH_FEATURES
+#endif
+]])
+endif()
 
 # Headers only — drop debug copy and any binaries that landed under share/.
 file(REMOVE_RECURSE
